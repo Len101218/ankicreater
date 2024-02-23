@@ -5,6 +5,7 @@ import fitz  # PyMuPDF
 import io
 import anki
 import subprocess
+import recentfiles
 
 class PDFViewer(tk.Tk):
     def __init__(self):
@@ -37,17 +38,19 @@ class PDFViewer(tk.Tk):
         self.images = []
         
         self.current_page = 0  # Track the current page index
+        self.zoom_factor = 1.0
         self.page_info = []  # Keep track of each page's starting y position in the canvas
         self.clicks = []  # To track the positions of clicks
         self.pdf_loaded = False
 
-        self.front_img = None
-        self.back_img = None
+        self.front_imgs = []
+        self.back_imgs = []
     
     def select_file(self):
         #filedialog.askopenfilename(initialdir = "/home/len1218")
         try:
             file_path = subprocess.check_output(["zenity", "--file-selection"]).decode().strip()
+            recentfiles.add_to_recent_files(file_path)
             return file_path
         except subprocess.CalledProcessError:
             # Handle cancellation or error
@@ -71,19 +74,21 @@ class PDFViewer(tk.Tk):
         total_height = 0
         for page_num in range(len(self.doc)):
             page = self.doc.load_page(page_num)
-            pix = page.get_pixmap(matrix=fitz.Matrix(144 / 72, 144 / 72))  # Adjust scale here as needed
+            pix = page.get_pixmap(matrix=fitz.Matrix( canvas_width / page.rect.width* self.zoom_factor, canvas_width / page.rect.width * self.zoom_factor))  # Adjust scale here as needed
             img = Image.open(io.BytesIO(pix.tobytes()))
             
             # Scale image to fit canvas width while maintaining aspect ratio
             aspect_ratio = img.height / img.width
-            new_width = canvas_width
+            new_width = int(canvas_width * self.zoom_factor)
             new_height = int(aspect_ratio * new_width)
-            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            #img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
             pil_img = ImageTk.PhotoImage(img)
             self.images.append(pil_img)
-
-            self.canvas.create_image(0, total_height, anchor=tk.NW, image=pil_img)
+            
+            center_x = (canvas_width - new_width) // 2
+            
+            self.canvas.create_image(center_x, total_height, anchor=tk.NW, image=pil_img)
             self.page_info.append(total_height)  # Record the starting position of the next page
             total_height += new_height
 
@@ -108,6 +113,10 @@ class PDFViewer(tk.Tk):
         self.canvas.yview_scroll(int(delta), "units")
 
     def bind_keys(self):
+        self.canvas.bind("<Control-plus>", lambda event: self.adjust_zoom(1.1))  # Zoom in
+        self.canvas.bind("<Control-minus>", lambda event: self.adjust_zoom(0.9))  # Zoom out
+        self.canvas.bind("<Control-0>", lambda event: self.reset_zoom())  # Reset zoom
+
         self.canvas.bind("<Left>", lambda event: self.navigate_pages(-1))
         self.canvas.bind("<Right>", lambda event: self.navigate_pages(1))
         self.canvas.bind("<Up>", lambda event: self.canvas.yview_scroll(-1, "units"))
@@ -146,6 +155,45 @@ class PDFViewer(tk.Tk):
                 self.create_snippet_from_clicks()
                 self.clicks.clear()  # Reset clicks after processing
 
+
+
+
+
+    def create_snippet(self, start_page, end_page, offset_start, offset_end):
+        images = []
+        
+        for page_num in range(start_page, end_page + 1):
+            page = self.doc.load_page(page_num)
+            # Adjust the clip rect depending on the page
+            if page_num == start_page:
+                clip_rect = fitz.Rect(0, offset_start, page.rect.width, page.rect.height)
+            elif page_num == end_page:
+                clip_rect = fitz.Rect(0, 0, page.rect.width, offset_end)
+            else:
+                clip_rect = page.rect
+            
+            pix = page.get_pixmap(clip=clip_rect)
+            img = Image.open(io.BytesIO(pix.tobytes("png")))
+            images.append(img)
+        
+        if not self.front_imgs:
+            #self.front_imgs.append(snippet_image)
+            self.front_imgs = images
+        else:
+            #self.back_imgs.append(snippet_image)
+            self.back_imgs = images
+            anki.add_image_card_wrapper(self.front_imgs,self.back_imgs)
+            self.front_imgs = []
+            self.back_imgs = []
+
+
+
+
+
+
+
+
+
     def create_snippet_from_clicks(self):
         if len(self.clicks) != 2:
             return  # Ensure we have exactly two clicks
@@ -156,8 +204,10 @@ class PDFViewer(tk.Tk):
         # This example assumes a single-page PDF for simplicity. For multi-page
         # handling, you'd need to adjust the logic to find the correct page(s)
         # and calculate positions within those pages.
-        page_num = self.get_page(start)
-        current_height = self.page_info[page_num]
+        page_num_start = self.get_page(start)
+        page_num_end = self.get_page(end)
+        current_height_start = self.page_info[page_num_start]
+        current_height_end = self.page_info[page_num_end]
         
         #page_height = sum([self.doc[page_num].bound().height for page_num in range(len(self.doc))])
         #scale_factor = self.canvas.winfo_height() #/ page_height
@@ -165,11 +215,16 @@ class PDFViewer(tk.Tk):
         #pdf_end = end #/ scale_factor
         
         # Assume a uniform scale factor for simplicity; adjust based on your application's logic
-        scale_factor = self.canvas.winfo_width() / self.doc[page_num-1].rect.width
-        pdf_start = (start-current_height) / scale_factor
-        pdf_end = (end-current_height) / scale_factor
-        
-        page = self.doc.load_page(page_num-1 )
+        scale_factor = self.canvas.winfo_width() / self.doc[page_num_start-1].rect.width
+        scale_factor *= self.zoom_factor
+        pdf_start = (start-current_height_start) / scale_factor
+        pdf_end = (end-current_height_end) / scale_factor
+        print(page_num_start,page_num_end)
+        if page_num_start != page_num_end:
+            self.create_snippet(page_num_start -1, page_num_end -1, pdf_start,pdf_end)
+            return
+
+        page = self.doc.load_page(page_num_start-1)
         pix = page.get_pixmap()
 
         # Assuming the snippet does not span multiple pages
@@ -179,13 +234,13 @@ class PDFViewer(tk.Tk):
         
         # Save the snippet as an image
         snippet_image = Image.open(io.BytesIO(snippet_pix.tobytes()))
-        if self.front_img == None:
-            self.front_img = snippet_image
+        if not self.front_imgs:
+            self.front_imgs.append(snippet_image)
         else:
-            self.back_img = snippet_image
-            anki.add_image_card_wrapper(self.front_img,self.back_img)
-            self.front_img = None
-            self.back_img = None
+            self.back_imgs.append(snippet_image)
+            anki.add_image_card_wrapper(self.front_imgs,self.back_imgs)
+            self.front_imgs = []
+            self.back_imgs = []
 
 
         #snippet_image.save("snippet.png")
@@ -206,6 +261,18 @@ class PDFViewer(tk.Tk):
 
         #print("Current page:", ret)
         return ret
+
+    
+
+    def adjust_zoom(self, factor):
+        self.zoom_factor *= factor
+        print(self.zoom_factor)
+        self.load_visible_pages()
+
+    def reset_zoom(self):
+        self.zoom_factor = 1.0
+        self.load_visible_pages()
+
 
 
 if __name__ == "__main__":

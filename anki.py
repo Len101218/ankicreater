@@ -44,10 +44,16 @@ def add_card(deck_name, front, back, card_model_name="Basic"):
 #back_content = "Paris"
 #add_card(deck_name, front_content, back_content)
 
-def add_card_with_images(deck_name, front_image_file, back_image_file, card_model_name="Basic"):
+def add_card_with_images(deck_name, front_image_files, back_image_files, card_model_name="Basic"):
     # Format the front and back contents to include images
-    front_content = f'<img src="{front_image_file}">'
-    back_content = f'<img src="{back_image_file}">'
+    front_content = ''
+    for front_image_file in front_image_files:
+         front_content += f'<img src="{front_image_file}">'
+    
+    back_content = '' 
+    print(len(back_image_files))
+    for back_image_file in back_image_files:
+       back_content += f'<img src="{back_image_file}">'
 
     # AnkiConnect API URL
     url = "http://localhost:8765"
@@ -125,12 +131,21 @@ anki_media_folder_path = "/home/len1218/.local/share/Anki2/User 1/collection.med
 #back_image_file = "back.jpg"    
 #copy_image_to_anki_media(front_image_file)
 #copy_image_to_anki_media(back_image_file)
-def add_image_card_wrapper(front, back):
-    front_name = generate_unique_filename(anki_media_folder_path,"Front.png")
-    front_image_file = anki_media_folder_path + "/" +  front_name
-    back_name =  generate_unique_filename(anki_media_folder_path,"Back.png")
-    back_image_file = anki_media_folder_path + "/"+ back_name
-    front.save(front_image_file)
-    back.save(back_image_file)
-    add_card_with_images(deck_name, front_name, back_name)
+def add_image_card_wrapper(front_list, back_list):
+    front_names = []
+    back_names = []
+    for i in range(len(front_list)):
+        front = front_list[i]
+        front_name = generate_unique_filename(anki_media_folder_path,"Front.png")
+        front_image_file = anki_media_folder_path + "/" +  front_name
+        front.save(front_image_file)
+        front_names.append(front_name)
+    for i in range(len(back_list)):
+        back = back_list[i]
+        back_name =  generate_unique_filename(anki_media_folder_path,"Back.png")
+        back_image_file = anki_media_folder_path + "/"+ back_name
+        back.save(back_image_file)
+        back_names.append(back_name)
+        
+    add_card_with_images(deck_name, front_names, back_names)
 
