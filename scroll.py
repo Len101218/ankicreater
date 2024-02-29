@@ -173,6 +173,7 @@ class PDFViewer(tk.Tk):
                 clip_rect = page.rect
             
             pix = page.get_pixmap(clip=clip_rect)
+
             img = Image.open(io.BytesIO(pix.tobytes("png")))
             images.append(img)
         
@@ -229,11 +230,13 @@ class PDFViewer(tk.Tk):
 
         # Assuming the snippet does not span multiple pages
         print(0, pdf_start, pix.width, pdf_end)
+        canvas_width = self.canvas.winfo_width()
         clip_rect = fitz.Rect(0, pdf_start, pix.width, pdf_end)
-        snippet_pix = page.get_pixmap(clip=clip_rect)
+        snippet_pix = page.get_pixmap(matrix=fitz.Matrix( canvas_width / page.rect.width* self.zoom_factor, canvas_width / page.rect.width * self.zoom_factor),clip = clip_rect)
+        #snippet_pix = page.get_pixmap(matrix = matrix, clip=clip_rect)
         
         # Save the snippet as an image
-        snippet_image = Image.open(io.BytesIO(snippet_pix.tobytes()))
+        snippet_image = Image.open(io.BytesIO(snippet_pix.tobytes("png")))
         if not self.front_imgs:
             self.front_imgs.append(snippet_image)
         else:
